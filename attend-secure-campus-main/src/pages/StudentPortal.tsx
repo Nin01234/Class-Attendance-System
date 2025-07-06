@@ -30,6 +30,7 @@ const StudentPortal = () => {
   const [scanningMode, setScanningMode] = useState(false);
   const [gpsLocation, setGpsLocation] = useState(null);
 
+
   useEffect(() => {
     const fetchStudentData = async () => {
       setLoading(true);
@@ -37,31 +38,120 @@ const StudentPortal = () => {
       try {
         // Get current user (student)
         const { data: { user }, error: userError } = await supabase.auth.getUser();
-        if (userError || !user) throw userError || new Error('No user');
-        // Fetch student profile
-        const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        if (profileError) throw profileError;
-        setStudentData(profile);
-        // Fetch enrollments
-        const { data: enrollments, error: enrollmentsError } = await supabase.from('course_enrollments').select('*').eq('student_id', user.id);
-        if (enrollmentsError) throw enrollmentsError;
-        // Fetch courses
-        const courseIds = (enrollments || []).map(e => e.course_id);
-        const { data: courses, error: coursesError } = await supabase.from('courses').select('*').in('id', courseIds);
-        if (coursesError) throw coursesError;
-        setEnrolledCourses(courses || []);
-        // Fetch attendance analytics
-        const { data: analytics, error: analyticsError } = await supabase.from('attendance_analytics').select('*').eq('student_id', user.id);
-        if (analyticsError) throw analyticsError;
-        setAttendanceStats(analytics || []);
-        // Fetch attendance records
-        const { data: records, error: recordsError } = await supabase.from('attendance_records').select('*').eq('student_id', user.id);
-        if (recordsError) throw recordsError;
-        setAttendanceRecords(records || []);
+        
+        if (userError || !user) {
+          setError('No authenticated user found. Please log in.');
+          toast.error('Authentication required. Please log in.');
+          return;
+        }
+
+        // Fetch real student profile from database
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError) {
+          setError('Failed to load user profile.');
+          toast.error('Failed to load user profile from database.');
+          return;
+        }
+
+        if (!profile) {
+          setError('User profile not found.');
+          toast.error('User profile not found in database.');
+          return;
+        }
+
+        // Set student data with real user information
+        setStudentData({
+          id: profile.id,
+          name: profile.full_name,
+          email: profile.email,
+          program: profile.department || 'Undefined',
+          level: `Year ${profile.year_of_study || 'N/A'}`,
+          student_id: profile.student_id || profile.id,
+          department: profile.department || 'Undefined',
+          year: profile.year_of_study || 0,
+          phone: profile.phone_number || 'Not provided',
+          address: 'University of Ghana',
+          profile_image: profile.profile_image_url || '/placeholder-avatar.jpg'
+        });
+        
+        // Fetch real enrollments
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from('course_enrollments')
+          .select('*')
+          .eq('student_id', user.id);
+
+        if (enrollmentsError) {
+          console.error('Error fetching enrollments:', enrollmentsError);
+          setEnrolledCourses([]);
+        } else {
+          // Fetch courses for enrolled courses
+          const courseIds = (enrollments || []).map(e => e.course_id);
+          if (courseIds.length > 0) {
+            const { data: courses, error: coursesError } = await supabase
+              .from('courses')
+              .select('*')
+              .in('id', courseIds);
+            
+            if (coursesError) {
+              console.error('Error fetching courses:', coursesError);
+              setEnrolledCourses([]);
+            } else {
+              setEnrolledCourses(courses || []);
+            }
+          } else {
+            setEnrolledCourses([]);
+          }
+        }
+        
+        // Fetch real attendance analytics
+        const { data: analytics, error: analyticsError } = await supabase
+          .from('attendance_analytics')
+          .select('*')
+          .eq('student_id', user.id);
+
+        if (analyticsError) {
+          console.error('Error fetching analytics:', analyticsError);
+          setAttendanceStats([]);
+        } else {
+          setAttendanceStats(analytics || []);
+        }
+        
+        // Fetch real attendance records
+        const { data: records, error: recordsError } = await supabase
+          .from('attendance_records')
+          .select('*')
+          .eq('student_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (recordsError) {
+          console.error('Error fetching attendance records:', recordsError);
+          setAttendanceRecords([]);
+        } else {
+          setAttendanceRecords(records || []);
+        }
+        
         // Fetch class sessions for enrolled courses
-        const { data: sessions, error: sessionsError } = await supabase.from('class_sessions').select('*').in('course_id', courseIds);
-        if (sessionsError) throw sessionsError;
-        setClassSessions(sessions || []);
+        const courseIds = (enrollments || []).map(e => e.course_id);
+        if (courseIds.length > 0) {
+          const { data: sessions, error: sessionsError } = await supabase
+            .from('class_sessions')
+            .select('*')
+            .in('course_id', courseIds);
+
+          if (sessionsError) {
+            console.error('Error fetching class sessions:', sessionsError);
+            setClassSessions([]);
+          } else {
+            setClassSessions(sessions || []);
+          }
+        } else {
+          setClassSessions([]);
+        }
       } catch (err) {
         setError('Failed to load student data.');
         toast.error('Failed to load student data from backend.');
@@ -71,6 +161,11 @@ const StudentPortal = () => {
     };
     fetchStudentData();
   }, []);
+
+  // Generate student ID in proper range
+  const generateStudentId = () => {
+    return Math.floor(Math.random() * (29999999 - 10900000 + 1)) + 10900000;
+  };
 
   // Simulate live class tracking
   useEffect(() => {
@@ -182,10 +277,19 @@ const StudentPortal = () => {
   ];
 
   const handleQRScan = () => {
-    // Mark attendance via QR Code
+    if (!studentData) {
+      toast.error('Student data not loaded. Please try again.');
+      return;
+    }
+
+    // Mark attendance via QR Code with real student data
     const attendanceRecord = {
-      studentId: studentData.id,
+      studentId: studentData.student_id || studentData.id,
       studentName: studentData.name,
+      studentEmail: studentData.email,
+      studentPhone: studentData.phone,
+      studentDepartment: studentData.department,
+      studentYear: studentData.year,
       courseId: currentClass?.course || 'CS301',
       courseName: currentClass?.course || 'Computer Networks',
       date: new Date().toISOString().split('T')[0],
@@ -193,19 +297,28 @@ const StudentPortal = () => {
       status: 'present' as const,
       method: 'QR Code' as const,
       location: currentClass?.location || 'Room 101',
-      lecturerName: 'Dr. John Smith'
+      lecturerName: 'Dr. Sarah Johnson'
     };
 
     dispatch({ type: 'MARK_ATTENDANCE', payload: attendanceRecord });
-    toast.success('Attendance marked successfully via QR Code!');
+    toast.success(`Attendance marked successfully via QR Code! Student: ${studentData.name} (ID: ${attendanceRecord.studentId})`);
     navigate('/student-attendance');
   };
 
   const handleFaceVerification = () => {
-    // Mark attendance via Face Recognition
+    if (!studentData) {
+      toast.error('Student data not loaded. Please try again.');
+      return;
+    }
+
+    // Mark attendance via Face Recognition with real student data
     const attendanceRecord = {
-      studentId: studentData.id,
+      studentId: studentData.student_id || studentData.id,
       studentName: studentData.name,
+      studentEmail: studentData.email,
+      studentPhone: studentData.phone,
+      studentDepartment: studentData.department,
+      studentYear: studentData.year,
       courseId: currentClass?.course || 'CS301',
       courseName: currentClass?.course || 'Computer Networks',
       date: new Date().toISOString().split('T')[0],
@@ -213,19 +326,28 @@ const StudentPortal = () => {
       status: 'present' as const,
       method: 'Face Recognition' as const,
       location: currentClass?.location || 'Room 101',
-      lecturerName: 'Dr. John Smith'
+      lecturerName: 'Dr. Sarah Johnson'
     };
 
     dispatch({ type: 'MARK_ATTENDANCE', payload: attendanceRecord });
-    toast.success('Attendance marked successfully via Face Recognition!');
+    toast.success(`Attendance marked successfully via Face Recognition! Student: ${studentData.name} (ID: ${attendanceRecord.studentId})`);
     navigate('/student-attendance');
   };
 
   const handleGPSVerification = () => {
-    // Mark attendance via GPS
+    if (!studentData) {
+      toast.error('Student data not loaded. Please try again.');
+      return;
+    }
+
+    // Mark attendance via GPS with real student data
     const attendanceRecord = {
-      studentId: studentData.id,
+      studentId: studentData.student_id || studentData.id,
       studentName: studentData.name,
+      studentEmail: studentData.email,
+      studentPhone: studentData.phone,
+      studentDepartment: studentData.department,
+      studentYear: studentData.year,
       courseId: currentClass?.course || 'CS301',
       courseName: currentClass?.course || 'Computer Networks',
       date: new Date().toISOString().split('T')[0],
@@ -233,18 +355,27 @@ const StudentPortal = () => {
       status: 'present' as const,
       method: 'GPS' as const,
       location: currentClass?.location || 'Room 101',
-      lecturerName: 'Dr. John Smith'
+      lecturerName: 'Dr. Sarah Johnson'
     };
 
     dispatch({ type: 'MARK_ATTENDANCE', payload: attendanceRecord });
-    toast.success('Attendance marked successfully via GPS!');
+    toast.success(`Attendance marked successfully via GPS! Student: ${studentData.name} (ID: ${attendanceRecord.studentId})`);
     navigate('/student-attendance');
   };
 
   const markAttendanceForClass = (classInfo) => {
+    if (!studentData) {
+      toast.error('Student data not loaded. Please try again.');
+      return;
+    }
+
     const attendanceRecord = {
-      studentId: studentData.id,
+      studentId: studentData.student_id || studentData.id,
       studentName: studentData.name,
+      studentEmail: studentData.email,
+      studentPhone: studentData.phone,
+      studentDepartment: studentData.department,
+      studentYear: studentData.year,
       courseId: classInfo.id,
       courseName: classInfo.course,
       date: new Date().toISOString().split('T')[0],
@@ -256,13 +387,13 @@ const StudentPortal = () => {
     };
 
     dispatch({ type: 'MARK_ATTENDANCE', payload: attendanceRecord });
-    toast.success(`Attendance marked for ${classInfo.course}!`);
+    toast.success(`Attendance marked for ${classInfo.course}! Student: ${studentData.name} (ID: ${attendanceRecord.studentId})`);
     
     // Add notification
     dispatch({
       type: 'ADD_NOTIFICATION',
       payload: {
-        message: `Successfully marked attendance for ${classInfo.course} at ${classInfo.time}`,
+        message: `Successfully marked attendance for ${classInfo.course} at ${classInfo.time} - ${studentData.name} (ID: ${attendanceRecord.studentId})`,
         type: 'success'
       }
     });
@@ -306,18 +437,26 @@ const StudentPortal = () => {
 
   const renderDashboard = () => (
     <div className="space-y-6">
+
+
       {/* Student Info Card */}
       <Card className="border-0 shadow-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <CardContent className="p-6">
           <div className="flex items-center space-x-4">
             <Avatar className="w-20 h-20 border-4 border-white/20">
               <AvatarImage src="/placeholder-avatar.jpg" />
-              <AvatarFallback className="text-xl bg-white/20">KA</AvatarFallback>
+              <AvatarFallback className="text-xl bg-white/20">
+                {studentData?.name?.split(' ').map(n => n[0]).join('') || 'S'}
+              </AvatarFallback>
             </Avatar>
             <div className="flex-1">
               <h2 className="text-2xl font-bold">{studentData?.name}</h2>
-              <p className="text-blue-100">ID: {studentData?.id}</p>
+              <p className="text-blue-100">ID: {studentData?.student_id || studentData?.id}</p>
               <p className="text-blue-100">{studentData?.program} • {studentData?.level}</p>
+              <p className="text-blue-100">{studentData?.email}</p>
+              {studentData?.phone && (
+                <p className="text-blue-100">Phone: {studentData.phone}</p>
+              )}
               <div className="flex items-center space-x-4 mt-2">
                 <div className="text-center">
                   <p className="text-lg font-bold">{attendanceStats[0]?.attendanceRate || 0}%</p>

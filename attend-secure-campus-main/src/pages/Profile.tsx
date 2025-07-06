@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import AppLayout from '@/components/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,33 +6,124 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { User, Mail, Phone, MapPin, Calendar, Camera } from 'lucide-react';
-import { useAuth } from '@/hooks/useAuth';
+import { User, Mail, Phone, MapPin, Calendar, Camera, Loader2 } from 'lucide-react';
+import { useUserData } from '@/hooks/useUserData';
+import { toast } from 'sonner';
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { profile, loading, error, updateProfile } = useUserData();
   const [isEditing, setIsEditing] = useState(false);
   const [profileData, setProfileData] = useState({
-    fullName: 'John Doe',
-    email: user?.email || '',
-    studentId: 'UG/2023/001234',
-    phone: '+233 24 123 4567',
-    department: 'Computer Science',
-    faculty: 'Faculty of Physical and Computational Sciences',
-    yearOfStudy: '3',
-    dateOfBirth: '2002-05-15',
-    address: 'Accra, Ghana'
+    fullName: '',
+    email: '',
+    studentId: '',
+    phone: '',
+    department: '',
+    faculty: '',
+    yearOfStudy: '',
+    dateOfBirth: '',
+    address: ''
   });
 
-  const handleSave = () => {
-    // TODO: Implement profile update logic
-    setIsEditing(false);
+  // Update profile data when profile is loaded
+  useEffect(() => {
+    if (profile) {
+      setProfileData({
+        fullName: profile.full_name || '',
+        email: profile.email || '',
+        studentId: profile.student_id || '',
+        phone: profile.phone_number || '',
+        department: profile.department || '',
+        faculty: profile.faculty || '',
+        yearOfStudy: profile.year_of_study?.toString() || '',
+        dateOfBirth: '', // Not stored in database yet
+        address: '' // Not stored in database yet
+      });
+    }
+  }, [profile]);
+
+  const handleSave = async () => {
+    if (!profile) return;
+
+    try {
+      const updates = {
+        full_name: profileData.fullName,
+        phone_number: profileData.phone,
+        department: profileData.department,
+        faculty: profileData.faculty,
+        year_of_study: profileData.yearOfStudy ? parseInt(profileData.yearOfStudy) : null
+      };
+
+      const { error } = await updateProfile(updates);
+      
+      if (error) {
+        toast.error('Failed to update profile');
+        console.error('Profile update error:', error);
+      } else {
+        toast.success('Profile updated successfully!');
+        setIsEditing(false);
+      }
+    } catch (err) {
+      toast.error('An unexpected error occurred');
+      console.error('Profile update error:', err);
+    }
   };
 
   const handleCancel = () => {
     setIsEditing(false);
-    // Reset form data if needed
+    // Reset form data to original profile data
+    if (profile) {
+      setProfileData({
+        fullName: profile.full_name || '',
+        email: profile.email || '',
+        studentId: profile.student_id || '',
+        phone: profile.phone_number || '',
+        department: profile.department || '',
+        faculty: profile.faculty || '',
+        yearOfStudy: profile.year_of_study?.toString() || '',
+        dateOfBirth: '',
+        address: ''
+      });
+    }
   };
+
+  if (loading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex items-center space-x-2">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span>Loading profile...</span>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-red-600 mb-4">Error loading profile: {error}</p>
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-gray-600 mb-4">No profile data found</p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
@@ -51,7 +141,7 @@ const Profile = () => {
             </CardHeader>
             <CardContent className="text-center space-y-4">
               <Avatar className="w-24 h-24 mx-auto">
-                <AvatarImage src="/placeholder-avatar.jpg" />
+                <AvatarImage src={profile.profile_image_url || "/placeholder-avatar.jpg"} />
                 <AvatarFallback className="text-lg">
                   {profileData.fullName.split(' ').map(n => n[0]).join('')}
                 </AvatarFallback>
@@ -81,7 +171,7 @@ const Profile = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">Year of Study</span>
-                <span className="font-medium">3rd Year</span>
+                <span className="font-medium">{profileData.yearOfStudy ? `${profileData.yearOfStudy}rd Year` : 'Not set'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-gray-600">GPA</span>
@@ -98,15 +188,15 @@ const Profile = () => {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Student ID</p>
-                <p className="font-medium">{profileData.studentId}</p>
+                <p className="font-medium">{profileData.studentId || 'Not set'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Department</p>
-                <p className="font-medium">{profileData.department}</p>
+                <p className="font-medium">{profileData.department || 'Not set'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Faculty</p>
-                <p className="font-medium">{profileData.faculty}</p>
+                <p className="font-medium">{profileData.faculty || 'Not set'}</p>
               </div>
             </CardContent>
           </Card>
@@ -166,9 +256,9 @@ const Profile = () => {
 
               <div className="space-y-2">
                 <Label htmlFor="yearOfStudy">Year of Study</Label>
-                <Select value={profileData.yearOfStudy} disabled={!isEditing}>
+                <Select value={profileData.yearOfStudy} disabled={!isEditing} onValueChange={(value) => setProfileData({...profileData, yearOfStudy: value})}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select year" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">1st Year</SelectItem>
@@ -180,37 +270,34 @@ const Profile = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                <div className="flex items-center space-x-2">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  <Input
-                    id="dateOfBirth"
-                    type="date"
-                    value={profileData.dateOfBirth}
-                    onChange={(e) => setProfileData({...profileData, dateOfBirth: e.target.value})}
-                    disabled={!isEditing}
-                  />
-                </div>
+                <Label htmlFor="department">Department</Label>
+                <Input
+                  id="department"
+                  value={profileData.department}
+                  onChange={(e) => setProfileData({...profileData, department: e.target.value})}
+                  disabled={!isEditing}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
-                <div className="flex items-center space-x-2">
-                  <MapPin className="h-4 w-4 text-gray-400" />
-                  <Input
-                    id="address"
-                    value={profileData.address}
-                    onChange={(e) => setProfileData({...profileData, address: e.target.value})}
-                    disabled={!isEditing}
-                  />
-                </div>
+                <Label htmlFor="faculty">Faculty</Label>
+                <Input
+                  id="faculty"
+                  value={profileData.faculty}
+                  onChange={(e) => setProfileData({...profileData, faculty: e.target.value})}
+                  disabled={!isEditing}
+                />
               </div>
             </div>
 
             {isEditing && (
               <div className="flex space-x-4 mt-6">
-                <Button onClick={handleSave}>Save Changes</Button>
-                <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+                <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">
+                  Save Changes
+                </Button>
+                <Button variant="outline" onClick={handleCancel}>
+                  Cancel
+                </Button>
               </div>
             )}
           </CardContent>

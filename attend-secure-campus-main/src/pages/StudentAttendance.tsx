@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { useAttendance } from '@/hooks/useAttendanceStore';
+import { supabase } from '@/integrations/supabase/client';
 
 const StudentAttendance = () => {
   const navigate = useNavigate();
@@ -15,22 +16,85 @@ const StudentAttendance = () => {
   const [cameraStream, setCameraStream] = useState(null);
   const [scanningQR, setScanningQR] = useState(false);
   const [scanningFace, setScanningFace] = useState(false);
-
-  const studentData = {
-    id: 'STU20230001',
-    name: 'Kwame Asante',
-    attendanceRate: 87,
-    totalClasses: 45,
-    present: 39,
-    absent: 4,
-    late: 2
-  };
+  const [studentData, setStudentData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [attendanceStats, setAttendanceStats] = useState({
+    attendanceRate: 0,
+    totalClasses: 0,
+    present: 0,
+    absent: 0,
+    late: 0
+  });
 
   const todayClasses = [
     { id: 'CS301', name: 'Database Systems', time: '2:00 PM', room: 'Room 101', lecturer: 'Dr. John Smith', status: 'upcoming' },
     { id: 'CS350', name: 'Web Development', time: '4:00 PM', room: 'Lab 3', lecturer: 'Prof. Sarah Johnson', status: 'upcoming' },
     { id: 'CS340', name: 'Software Engineering', time: '10:00 AM', room: 'Room 205', lecturer: 'Dr. Kwame Nkrumah', status: 'completed' }
   ];
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        setLoading(true);
+        
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        
+        if (userError || !user) {
+          toast.error('Authentication required. Please log in.');
+          navigate('/login');
+          return;
+        }
+
+        // Fetch user profile
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profileError || !profile) {
+          toast.error('Failed to load user profile.');
+          return;
+        }
+
+        // Set student data
+        setStudentData({
+          id: profile.id,
+          name: profile.full_name,
+          email: profile.email,
+          student_id: profile.student_id || profile.id,
+          department: profile.department || 'Undefined',
+          year: profile.year_of_study || 0
+        });
+
+        // Fetch attendance analytics
+        const { data: analytics, error: analyticsError } = await supabase
+          .from('attendance_analytics')
+          .select('*')
+          .eq('student_id', user.id)
+          .single();
+
+        if (!analyticsError && analytics) {
+          setAttendanceStats({
+            attendanceRate: analytics.attendance_percentage || 0,
+            totalClasses: analytics.total_sessions || 0,
+            present: analytics.attended_sessions || 0,
+            absent: (analytics.total_sessions || 0) - (analytics.attended_sessions || 0),
+            late: 0 // Calculate from attendance records if needed
+          });
+        }
+
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        toast.error('Failed to load user data.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, [navigate]);
 
   useEffect(() => {
     // Get current location
@@ -46,6 +110,11 @@ const StudentAttendance = () => {
   }, []);
 
   const markAttendanceQR = async () => {
+    if (!studentData) {
+      toast.error('Student data not loaded. Please try again.');
+      return;
+    }
+
     setScanningQR(true);
     toast.info('QR Scanner activated. Point camera at QR code.');
     
@@ -72,6 +141,11 @@ const StudentAttendance = () => {
   };
 
   const markAttendanceFace = async () => {
+    if (!studentData) {
+      toast.error('Student data not loaded. Please try again.');
+      return;
+    }
+
     setScanningFace(true);
     toast.info('Starting face verification...');
     
@@ -112,6 +186,11 @@ const StudentAttendance = () => {
   };
 
   const markAttendanceGPS = () => {
+    if (!studentData) {
+      toast.error('Student data not loaded. Please try again.');
+      return;
+    }
+
     if (!currentLocation) {
       toast.error('GPS location not available. Please enable location services.');
       return;
@@ -163,94 +242,134 @@ const StudentAttendance = () => {
         </div>
 
         {/* Student Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-            <CardContent className="p-6 text-center">
-              <p className="text-blue-100">Attendance Rate</p>
-              <p className="text-3xl font-bold">{studentData.attendanceRate}%</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-            <CardContent className="p-6 text-center">
-              <p className="text-green-100">Present</p>
-              <p className="text-3xl font-bold">{studentData.present}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
-            <CardContent className="p-6 text-center">
-              <p className="text-red-100">Absent</p>
-              <p className="text-3xl font-bold">{studentData.absent}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
-            <CardContent className="p-6 text-center">
-              <p className="text-yellow-100">Late</p>
-              <p className="text-3xl font-bold">{studentData.late}</p>
-            </CardContent>
-          </Card>
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <Card key={i} className="bg-gradient-to-r from-gray-500 to-gray-600 text-white">
+                <CardContent className="p-6 text-center">
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-gray-400 rounded mb-2"></div>
+                    <div className="h-8 bg-gray-400 rounded"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : studentData ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+              <CardContent className="p-6 text-center">
+                <p className="text-blue-100">Attendance Rate</p>
+                <p className="text-3xl font-bold">{attendanceStats.attendanceRate}%</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+              <CardContent className="p-6 text-center">
+                <p className="text-green-100">Present</p>
+                <p className="text-3xl font-bold">{attendanceStats.present}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
+              <CardContent className="p-6 text-center">
+                <p className="text-red-100">Absent</p>
+                <p className="text-3xl font-bold">{attendanceStats.absent}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
+              <CardContent className="p-6 text-center">
+                <p className="text-yellow-100">Late</p>
+                <p className="text-3xl font-bold">{attendanceStats.late}</p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-gray-500">Failed to load student data</p>
+          </div>
+        )}
 
         {/* Attendance Methods */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardContent className="p-6 text-center">
-              <div className={`w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4 ${scanningQR ? 'animate-pulse' : ''}`}>
-                <QrCode className="h-8 w-8 text-blue-600" />
-              </div>
-              <h3 className="font-semibold mb-2">QR Code Scanner</h3>
-              <p className="text-sm text-gray-600 mb-4">Scan classroom QR code</p>
-              <Button 
-                onClick={markAttendanceQR} 
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                disabled={scanningQR}
-              >
-                {scanningQR ? 'Scanning...' : 'Start Scanner'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardContent className="p-6 text-center">
-              <div className={`w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4 ${scanningFace ? 'animate-pulse' : ''}`}>
-                <Camera className="h-8 w-8 text-green-600" />
-              </div>
-              <h3 className="font-semibold mb-2">Face Verification</h3>
-              <p className="text-sm text-gray-600 mb-4">AI facial recognition</p>
-              <Button 
-                onClick={markAttendanceFace} 
-                className="w-full bg-green-600 hover:bg-green-700"
-                disabled={scanningFace}
-              >
-                {scanningFace ? 'Scanning Face...' : 'Start Verification'}
-              </Button>
-              
-              {cameraStream && (
-                <div className="mt-4 p-4 bg-gray-100 rounded-lg">
-                  <div className="w-full h-32 bg-gray-300 rounded-lg flex items-center justify-center">
-                    <Camera className="h-8 w-8 text-gray-500" />
-                    <span className="ml-2 text-sm text-gray-600">Camera Active</span>
+        {loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="hover:shadow-lg transition-shadow">
+                <CardContent className="p-6 text-center">
+                  <div className="animate-pulse">
+                    <div className="w-16 h-16 rounded-full bg-gray-200 mx-auto mb-4"></div>
+                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded mb-4"></div>
+                    <div className="h-10 bg-gray-200 rounded"></div>
                   </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : studentData ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardContent className="p-6 text-center">
+                <div className={`w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4 ${scanningQR ? 'animate-pulse' : ''}`}>
+                  <QrCode className="h-8 w-8 text-blue-600" />
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <h3 className="font-semibold mb-2">QR Code Scanner</h3>
+                <p className="text-sm text-gray-600 mb-4">Scan classroom QR code</p>
+                <Button 
+                  onClick={markAttendanceQR} 
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                  disabled={scanningQR}
+                >
+                  {scanningQR ? 'Scanning...' : 'Start Scanner'}
+                </Button>
+              </CardContent>
+            </Card>
 
-          <Card className="hover:shadow-lg transition-shadow">
-            <CardContent className="p-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
-                <MapPin className="h-8 w-8 text-purple-600" />
-              </div>
-              <h3 className="font-semibold mb-2">GPS Verification</h3>
-              <p className="text-sm text-gray-600 mb-4">Location-based check-in</p>
-              <Button 
-                onClick={markAttendanceGPS} 
-                className="w-full bg-purple-600 hover:bg-purple-700"
-              >
-                Verify Location
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardContent className="p-6 text-center">
+                <div className={`w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4 ${scanningFace ? 'animate-pulse' : ''}`}>
+                  <Camera className="h-8 w-8 text-green-600" />
+                </div>
+                <h3 className="font-semibold mb-2">Face Verification</h3>
+                <p className="text-sm text-gray-600 mb-4">AI facial recognition</p>
+                <Button 
+                  onClick={markAttendanceFace} 
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  disabled={scanningFace}
+                >
+                  {scanningFace ? 'Scanning Face...' : 'Start Verification'}
+                </Button>
+                
+                {cameraStream && (
+                  <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+                    <div className="w-full h-32 bg-gray-300 rounded-lg flex items-center justify-center">
+                      <Camera className="h-8 w-8 text-gray-500" />
+                      <span className="ml-2 text-sm text-gray-600">Camera Active</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-shadow">
+              <CardContent className="p-6 text-center">
+                <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-4">
+                  <MapPin className="h-8 w-8 text-purple-600" />
+                </div>
+                <h3 className="font-semibold mb-2">GPS Verification</h3>
+                <p className="text-sm text-gray-600 mb-4">Location-based check-in</p>
+                <Button 
+                  onClick={markAttendanceGPS} 
+                  className="w-full bg-purple-600 hover:bg-purple-700"
+                >
+                  Verify Location
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-gray-500">Student data not available</p>
+          </div>
+        )}
 
         {/* Today's Classes */}
         <Card>
@@ -304,7 +423,7 @@ const StudentAttendance = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {state.attendanceRecords.filter(record => record.studentId === studentData.id).slice(0, 5).map((record) => (
+                  {state.attendanceRecords.filter(record => record.studentId === (studentData?.id || '')).slice(0, 5).map((record) => (
                     <tr key={record.id} className="border-b hover:bg-gray-50">
                       <td className="p-3">{record.date}</td>
                       <td className="p-3 font-medium">{record.courseName}</td>

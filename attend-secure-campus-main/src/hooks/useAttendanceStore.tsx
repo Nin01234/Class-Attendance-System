@@ -6,6 +6,10 @@ interface AttendanceRecord {
   id: string;
   studentId: string;
   studentName: string;
+  studentEmail?: string;
+  studentPhone?: string;
+  studentDepartment?: string;
+  studentYear?: number;
   courseId: string;
   courseName: string;
   date: string;
@@ -14,6 +18,10 @@ interface AttendanceRecord {
   method: 'QR Code' | 'Face Recognition' | 'GPS' | 'Manual';
   location?: string;
   lecturerName?: string;
+  score?: number;
+  scoreDate?: string;
+  scoreTime?: string;
+  scoredBy?: string;
 }
 
 interface Student {
@@ -45,6 +53,7 @@ interface AttendanceState {
 
 type AttendanceAction = 
   | { type: 'MARK_ATTENDANCE'; payload: Omit<AttendanceRecord, 'id'> }
+  | { type: 'SCORE_STUDENT'; payload: { studentId: string; score: number; scoredBy: string; date: string } }
   | { type: 'START_SESSION'; payload: { courseId: string; courseName: string; qrCode: string } }
   | { type: 'END_SESSION' }
   | { type: 'ADD_NOTIFICATION'; payload: { message: string; type: 'info' | 'success' | 'warning' | 'error' } }
@@ -116,6 +125,24 @@ function attendanceReducer(state: AttendanceState, action: AttendanceAction): At
       return {
         ...state,
         attendanceRecords: [newRecord, ...state.attendanceRecords]
+      };
+    case 'SCORE_STUDENT':
+      const updatedRecords = state.attendanceRecords.map(record => {
+        if (record.studentId === action.payload.studentId && 
+            record.date === action.payload.date) {
+          return {
+            ...record,
+            score: action.payload.score,
+            scoreDate: action.payload.date,
+            scoreTime: new Date().toLocaleTimeString(),
+            scoredBy: action.payload.scoredBy
+          };
+        }
+        return record;
+      });
+      return {
+        ...state,
+        attendanceRecords: updatedRecords
       };
     case 'START_SESSION':
       return {

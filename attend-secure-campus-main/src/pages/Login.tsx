@@ -60,7 +60,7 @@ const Login = () => {
       id: 'sim-user-123',
       email: 'student@simulation.com',
       role: 'student',
-      full_name: 'Demo Student'
+              full_name: 'User'
     }));
     
     toast.success('Entered simulation mode!');

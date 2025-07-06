@@ -162,7 +162,7 @@ const Hero = () => {
               </div>
 
               {/* Portal Access Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Card className="border-2 border-blue-200 hover:border-blue-400 transition-all duration-300 cursor-pointer hover:scale-105">
                   <CardContent className="p-6 text-center">
                     <User className="h-8 w-8 text-blue-600 mx-auto mb-3" />
@@ -184,7 +184,7 @@ const Hero = () => {
                             id: 'sim-student-123',
                             email: 'student@simulation.com',
                             role: 'student',
-                            full_name: 'Demo Student'
+                            full_name: 'User'
                           }));
                           navigate('/student-dashboard');
                         }}
@@ -208,27 +208,6 @@ const Hero = () => {
                         </Button>
                       </Link>
                       <Link to="/lecturer-dashboard">
-                        <Button variant="outline" size="sm" className="w-full">
-                          <Zap className="h-3 w-3 mr-1" />
-                          Demo Mode
-                        </Button>
-                      </Link>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-2 border-red-200 hover:border-red-400 transition-all duration-300 cursor-pointer hover:scale-105">
-                  <CardContent className="p-6 text-center">
-                    <Shield className="h-8 w-8 text-red-600 mx-auto mb-3" />
-                    <h3 className="font-semibold mb-2">Admin Portal</h3>
-                    <p className="text-sm text-gray-600 mb-4">Full system administration and management</p>
-                    <div className="space-y-2">
-                      <Link to="/login">
-                        <Button className="w-full bg-red-600 hover:bg-red-700" size="sm">
-                          Admin Login
-                        </Button>
-                      </Link>
-                      <Link to="/admin-dashboard">
                         <Button variant="outline" size="sm" className="w-full">
                           <Zap className="h-3 w-3 mr-1" />
                           Demo Mode
